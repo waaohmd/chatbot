@@ -14,6 +14,9 @@ npm run dev
 
 Open [http://localhost:3010/local-admin](http://localhost:3010/local-admin).
 
+On Windows, double-click `start-admin.bat` for a one-click launch. It installs
+dependencies on the first run, then starts the local admin console.
+
 The console can:
 
 - connect to the private WordPress records endpoint with a records key;
