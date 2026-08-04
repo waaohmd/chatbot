@@ -2,14 +2,14 @@
 /**
  * Plugin Name: Mustdohr Website Assistant
  * Description: Website search bar plus optional Gemini-powered public-content Q&A.
- * Version: 2.4.1
+ * Version: 2.5.0
  * Author: Mustdohr
  * Text Domain: mustdohr-site-assistant
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('MDH_SEARCH_VERSION', '2.4.1');
+define('MDH_SEARCH_VERSION', '2.5.0');
 define('MDH_CHATBOT_REMOTE_RECORDS_URL', 'http://158.69.253.60:3030/api/chats');
 define('MDH_GITHUB_REPOSITORY', 'waaohmd/chatbot');
 define('MDH_GITHUB_SLUG', 'mustdohr-site-assistant-v240');
@@ -480,8 +480,10 @@ function mdh_ai_settings_page() {
 add_action('wp_enqueue_scripts', function () {
     wp_enqueue_style('mdh-search-assistant', plugin_dir_url(__FILE__) . 'assistant.css', [], MDH_SEARCH_VERSION);
     wp_enqueue_style('mdh-contact-assistant', plugin_dir_url(__FILE__) . 'contact.css', ['mdh-search-assistant'], MDH_SEARCH_VERSION);
+    wp_enqueue_style('mdh-web-contact-form', plugin_dir_url(__FILE__) . 'contact-form.css', ['mdh-contact-assistant'], MDH_SEARCH_VERSION);
     wp_enqueue_style('mdh-config-assistant', plugin_dir_url(__FILE__) . 'config.css', ['mdh-search-assistant'], MDH_SEARCH_VERSION);
     wp_enqueue_script('mdh-search-assistant', plugin_dir_url(__FILE__) . 'assistant.js', [], MDH_SEARCH_VERSION, true);
+    wp_enqueue_script('mdh-web-contact-form', plugin_dir_url(__FILE__) . 'contact-form.js', [], MDH_SEARCH_VERSION, true);
     wp_localize_script('mdh-search-assistant', 'MustdohrAssistant', [
         'endpoint' => esc_url_raw(rest_url('mustdohr-search/v1/ask')),
         'aiEndpoint' => esc_url_raw(rest_url('mustdohr-search/v1/ai')),
@@ -490,7 +492,47 @@ add_action('wp_enqueue_scripts', function () {
         'language' => substr(determine_locale(), 0, 2),
         'config' => mdh_chatbot_public_config(),
     ]);
+    wp_localize_script('mdh-web-contact-form', 'MustdohrContactFormConfig', [
+        'endpoint' => esc_url_raw(rest_url('mustdohr-search/v1/contact')),
+        'sourceWebsite' => mdh_chatbot_get_config()['source_website'] ?: (wp_parse_url(home_url('/'), PHP_URL_HOST) ?: 'Mustdohr'),
+    ]);
 });
+
+/**
+ * Render the same contact workflow outside the floating assistant.
+ * The visitor cookie is shared with the assistant, so prior chat records are
+ * linked automatically when the visitor submits this form.
+ */
+function mdh_chatbot_contact_form_shortcode() {
+    $id = wp_unique_id('mdh-web-contact-form-');
+    ob_start();
+    ?>
+    <section class="mdh-web-contact-form" id="<?php echo esc_attr($id); ?>" data-source-website="<?php echo esc_attr(mdh_chatbot_get_config()['source_website'] ?: (wp_parse_url(home_url('/'), PHP_URL_HOST) ?: 'Mustdohr')); ?>">
+        <div class="mdh-web-contact-form__intro">
+            <span class="mdh-web-contact-form__eyebrow">CONTACT MUSTDOHR</span>
+            <h2>Tell us how we can help</h2>
+            <p>Share a few details and our team will follow up. Your request can be linked to your recent assistant conversation.</p>
+        </div>
+        <div class="mdh-web-contact-form__cookie" data-web-contact-cookie hidden>
+            <p>We use a small cookie to link your chat messages with this contact request.</p>
+            <button type="button" data-web-contact-cookie-dismiss>Got it</button>
+        </div>
+        <form class="mdh-web-contact-form__fields" data-web-contact-submit>
+            <label>Name<input name="name" maxlength="160" autocomplete="name" required></label>
+            <label>Company<input name="company" maxlength="190" autocomplete="organization"></label>
+            <label>Email<input name="email" type="email" maxlength="190" autocomplete="email" required></label>
+            <label>Country / region<input name="country" maxlength="120" autocomplete="country-name"></label>
+            <label>What do you need?<select name="request_type"><option>General enquiry</option><option>HR support</option><option>Onboarding</option><option>Payroll</option><option>Partnership</option></select></label>
+            <label class="mdh-web-contact-form__wide">Message<textarea name="message" maxlength="2000" required></textarea></label>
+            <input class="mdh-honeypot" name="website" tabindex="-1" autocomplete="off">
+            <button class="mdh-web-contact-form__submit" type="submit">Send enquiry</button>
+        </form>
+        <p class="mdh-web-contact-form__status" data-web-contact-status hidden aria-live="polite"></p>
+    </section>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('mustdohr_contact_form', 'mdh_chatbot_contact_form_shortcode');
 
 add_action('wp_footer', function () {
     if (!mdh_chatbot_get_config()['enabled']) return;
@@ -538,6 +580,15 @@ add_action('wp_footer', function () {
         </section>
     </div>
     <?php
+});
+
+// Make the standalone form available on the public homepage without requiring
+// an editor change. The shortcode can also be placed on any other page.
+add_action('wp_footer', function () {
+    if (!is_front_page()) return;
+    global $post;
+    if ($post instanceof WP_Post && has_shortcode((string) $post->post_content, 'mustdohr_contact_form')) return;
+    echo mdh_chatbot_contact_form_shortcode();
 });
 
 add_action('rest_api_init', function () {
@@ -827,8 +878,8 @@ function mdh_chatbot_notify_contact($submission) {
     $config = mdh_chatbot_get_config();
     $recipients = array_filter(array_map('sanitize_email', preg_split('/[\s,;]+/', (string) $config['notification_emails'])));
     if (!$recipients) return;
-    $subject = '[Mustdohr] New chatbot contact enquiry';
-    $body = "A visitor submitted the Mustdohr chatbot contact form.\n\n";
+    $subject = '[Mustdohr] New contact enquiry';
+    $body = "A visitor submitted a Mustdohr contact form.\n\n";
     foreach (['name' => 'Name', 'company' => 'Company', 'email' => 'Email', 'country' => 'Country / region', 'request_type' => 'Request type', 'message' => 'Message', 'page_url' => 'Page', 'source_website' => 'Source website', 'trigger_reason' => 'Triggered by', 'chat_question' => 'Last chat question', 'chat_record_id' => 'Linked chat record ID', 'chat_record_count' => 'Linked chat records', 'chat_transcript' => 'Chat transcript'] as $key => $label) {
         $body .= $label . ': ' . ($submission[$key] ?? '') . "\n";
     }
