@@ -1,0 +1,5 @@
+.mdh-assistant-contact-form[hidden]{display:none!important}
+.mdh-assistant-contact-status{margin:.65rem 0 0;padding:.65rem .75rem;border-radius:.7rem;font-size:.9rem;line-height:1.4}
+.mdh-assistant-contact-status.success{background:#e8f7ee;color:#155d36;border:1px solid #9edab5}
+.mdh-assistant-contact-status.error{background:#fff0f0;color:#a32121;border:1px solid #f0aaaa}
+.mdh-assistant-cookie-notice{margin:0 14px 9px;padding:10px 11px;border:1px solid #cbd8f7;border-radius:12px;background:#f1f5ff;color:#33436d;font-size:11px;line-height:1.45}.mdh-assistant-cookie-notice[hidden]{display:none!important}.mdh-assistant-cookie-notice p{margin:0 0 7px}.mdh-assistant-cookie-notice button{border:0;border-radius:999px;background:#2457ff;color:#fff;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer}

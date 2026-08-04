@@ -1,0 +1,6 @@
+{
+  "version": "2.4.0",
+  "homepage": "https://github.com/waaohmd/chatbot",
+  "download_url": "https://github.com/waaohmd/chatbot/releases/download/v2.4.0/mustdohr-site-assistant-v240.zip",
+  "description": "Mustdohr public website search and AI assistant. Updates are distributed through GitHub Releases; each WordPress site keeps its own settings and records."
+}
