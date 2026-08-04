@@ -14,8 +14,9 @@ npm run dev
 
 Open [http://localhost:3010/local-admin](http://localhost:3010/local-admin).
 
-On Windows, double-click `start-admin.bat` for a one-click launch. It installs
-dependencies on the first run, then starts the local admin console.
+On Windows, double-click `start-admin.bat` in the repository main directory for
+a one-click launch. It installs dependencies on the first run, starts the local
+server, and opens the admin console in your browser.
 
 The console can:
 
