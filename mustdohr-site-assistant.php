@@ -2,14 +2,14 @@
 /**
  * Plugin Name: Mustdohr Website Assistant
  * Description: Website search bar plus optional Gemini-powered public-content Q&A.
- * Version: 2.4.0
+ * Version: 2.4.1
  * Author: Mustdohr
  * Text Domain: mustdohr-site-assistant
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('MDH_SEARCH_VERSION', '2.4.0');
+define('MDH_SEARCH_VERSION', '2.4.1');
 define('MDH_CHATBOT_REMOTE_RECORDS_URL', 'http://158.69.253.60:3030/api/chats');
 define('MDH_GITHUB_REPOSITORY', 'waaohmd/chatbot');
 define('MDH_GITHUB_SLUG', 'mustdohr-site-assistant-v240');
