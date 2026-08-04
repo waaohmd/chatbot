@@ -26,6 +26,13 @@ To publish an update:
 
 Each website keeps its own Gemini keys, settings, knowledge configuration, chat records, contacts, and cookies. Only plugin code is distributed through this repository.
 
+## Local chatbot admin
+
+The standalone management console is in [`chatbot-admin`](./chatbot-admin). On
+Windows, double-click [`start-admin.bat`](./start-admin.bat) in the repository
+root. It starts the local admin server and opens
+`http://localhost:3010/local-admin` in your browser.
+
 ## Integration points
 
 - REST search endpoint: `/wp-json/mustdohr-search/v1/ask`
