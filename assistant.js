@@ -6,16 +6,22 @@
   const panel = root.querySelector('.mdh-assistant-panel');
   const close = root.querySelector('.mdh-assistant-close');
   const messages = root.querySelector('.mdh-assistant-messages');
-  const form = root.querySelector('form');
+  const form = root.querySelector('.mdh-assistant-search-form');
   const input = root.querySelector('input');
   const send = form.querySelector('button');
   const searchIntro = root.querySelector('[data-search-intro]');
   const aiIntro = root.querySelector('[data-ai-intro]');
   const contactToggle = root.querySelector('[data-contact-toggle]');
   const contactForm = root.querySelector('[data-contact-form]');
+  const contactRemove = root.querySelector('[data-contact-remove]');
   const contactStatus = root.querySelector('[data-contact-status]');
+  const quickToggle = root.querySelector('[data-quick-toggle]');
+  const quickPanel = root.querySelector('[data-quick-access]');
+  const quickForm = root.querySelector('[data-quick-form]');
+  const quickResult = root.querySelector('[data-quick-result]');
   const faqs = root.querySelector('[data-faqs]');
   const cookieNotice = root.querySelector('[data-cookie-notice]');
+  const aiCaptcha = root.querySelector('[data-ai-captcha]');
   const config = MustdohrAssistant.config || {};
   const visitorCookie = 'mdh_visitor_id';
   const noticeCookie = 'mdh_cookie_notice';
@@ -30,6 +36,77 @@
     document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; max-age=' + maxAge + '; SameSite=Lax';
   }
 
+  async function submitContactRequest(target, data) {
+    const options = { method: 'POST', headers: { 'Accept': 'application/json', 'X-MDH-Nonce': MustdohrAssistant.nonce || '' } };
+    if (target.ajax) {
+      const body = new URLSearchParams(data);
+      body.set('action', 'mdh_chatbot_submit_contact');
+      body.set('_mdh_nonce', MustdohrAssistant.nonce || '');
+      options.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+      options.body = body;
+    } else {
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(Object.assign({}, data, { _mdh_nonce: MustdohrAssistant.nonce || '' }));
+    }
+
+    let response;
+    try {
+      response = await fetch(target.url, options);
+    } catch (networkError) {
+      networkError.retryableContact = true;
+      throw networkError;
+    }
+    const raw = await response.text();
+    let result;
+    try {
+      result = raw ? JSON.parse(raw) : {};
+    } catch (parseError) {
+      const error = new Error('This WordPress endpoint returned a web page. Trying the next contact endpoint.');
+      error.retryableContact = true;
+      error.status = response.status;
+      throw error;
+    }
+
+    if (result && result.success === true && result.data) result = result.data;
+    if (!response.ok || (result && result.success === false)) {
+      const error = new Error((result && (result.message || (result.data && result.data.message))) || 'Your enquiry could not be sent.');
+      error.status = response.status;
+      const errorCode = result && (result.code || (result.data && result.data.code));
+      error.retryableContact = !['captcha_required', 'captcha_failed', 'captcha_unavailable', 'captcha_not_configured'].includes(errorCode) && (response.status === 403 || response.status === 404 || response.status === 405 || response.status >= 500);
+      throw error;
+    }
+    if (!result || result.ok !== true) {
+      const error = new Error('This contact endpoint is not handled by the active plugin. Trying the next endpoint.');
+      error.retryableContact = true;
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  }
+
+  async function submitContactWithFallback(data) {
+    const targets = [
+      { url: MustdohrAssistant.contactAjaxEndpoint, ajax: true },
+      { url: MustdohrAssistant.contactPostEndpoint, ajax: true },
+      { url: MustdohrAssistant.contactDirectEndpoint },
+      { url: MustdohrAssistant.contactEndpoint },
+      { url: MustdohrAssistant.contactFallbackEndpoint }
+    ].filter(function (target, index, list) {
+      return target.url && list.findIndex(function (item) { return item.url === target.url; }) === index;
+    });
+
+    let lastError = new Error('The contact endpoint is not configured.');
+    for (let index = 0; index < targets.length; index += 1) {
+      try {
+        return await submitContactRequest(targets[index], data);
+      } catch (error) {
+        lastError = error;
+        if (!error.retryableContact || index === targets.length - 1) throw error;
+      }
+    }
+    throw lastError;
+  }
+
   // A one-year first-party cookie lets the server associate every chat and
   // contact submission from the same browser, even after a tab is closed.
   let visitorId = readCookie(visitorCookie) || sessionStorage.getItem('mdh-assistant-visitor-session') || '';
@@ -42,6 +119,14 @@
   let lastQuestion = '';
   let lastTrigger = 'manual';
   const chatHistory = [];
+  let aiCaptchaToken = '';
+  let aiCaptchaVerified = false;
+
+  // Turnstile calls this global callback after the visitor completes the
+  // one-time AI security check. The token is sent only with the first AI call.
+  window.mdhChatbotAiTurnstileCallback = function (token) {
+    aiCaptchaToken = String(token || '');
+  };
 
   if (cookieNotice && readCookie(noticeCookie) !== '1') cookieNotice.hidden = false;
   if (cookieNotice) {
@@ -83,9 +168,35 @@
       return;
     }
     contactForm.hidden = false;
-    contactToggle.textContent = 'Hide contact form';
+    contactToggle.textContent = 'Contact us';
     const message = contactForm.querySelector('[name="message"]');
     if (message) message.focus();
+  }
+
+  function prepareQuickEnquiry(event) {
+    event.preventDefault();
+    if (!quickForm || !contactForm) return;
+    const values = Object.fromEntries(new FormData(quickForm).entries());
+    const serviceMap = {
+      hiring: { request: 'Onboarding', label: 'Hiring and onboarding' },
+      payroll: { request: 'Payroll', label: 'Payroll and payments' },
+      compliance: { request: 'HR support', label: 'Compliance and policies' },
+      'employee-support': { request: 'HR support', label: 'Employee support and benefits' },
+      general: { request: 'General enquiry', label: 'Something else' },
+    };
+    const service = serviceMap[values.service] || serviceMap.general;
+    const setField = function (name, value) {
+      const field = contactForm.querySelector('[name="' + name + '"]');
+      if (field) field.value = value || '';
+    };
+    setField('country', values.country);
+    setField('request_type', service.request);
+    // Keep the message field empty so the visitor can describe their request in their own words.
+    showContact('quick_access');
+    if (quickResult) {
+      quickResult.hidden = false;
+      quickResult.textContent = 'We prepared a ' + service.label.toLowerCase() + ' enquiry for ' + values.country + '. Add your name and email below, then send it to our team.';
+    }
   }
 
   function searchTerms(question) {
@@ -192,26 +303,57 @@
     mode = nextMode === 'ai' ? 'ai' : 'search';
     searchIntro.hidden = mode !== 'search';
     aiIntro.hidden = mode !== 'ai';
-    input.placeholder = mode === 'ai' ? 'Ask AI about Mustdohr' : 'Search Mustdohr';
+    input.placeholder = mode === 'ai' ? 'Ask AI about this website' : 'Search this website';
     send.textContent = mode === 'ai' ? 'Ask' : 'Search';
+    root.querySelectorAll('.mdh-assistant-results, .mdh-assistant-ai-offer').forEach(function (element) {
+      element.hidden = mode === 'ai';
+    });
   }
 
   async function ask(question) {
     const clean = String(question || '').trim();
     if (!clean || send.disabled) return;
+    const requestId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+      ? window.crypto.randomUUID()
+      : ('mdh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
     add(clean, 'user');
     lastQuestion = clean;
+    if (mode === 'ai' && config.turnstileSiteKey && !aiCaptchaVerified && !aiCaptchaToken) {
+      if (aiCaptcha) aiCaptcha.hidden = false;
+      add('Complete the security check above once, then click Ask again.', 'assistant');
+      return;
+    }
     send.disabled = true;
     input.value = '';
-    const waiting = add(mode === 'ai' ? 'Preparing an AI answer...' : 'Searching the Mustdohr website...', 'assistant');
+    const waiting = add(mode === 'ai' ? 'Preparing an AI answer...' : 'Searching the website...', 'assistant');
     const endpoint = mode === 'ai' ? MustdohrAssistant.aiEndpoint : MustdohrAssistant.endpoint;
     try {
+      const aiTokenForRequest = mode === 'ai' ? aiCaptchaToken : '';
+      const requestBody = {
+        message: clean,
+        lang: MustdohrAssistant.language || navigator.language.slice(0, 2) || 'en',
+        request_id: requestId,
+        _mdh_nonce: MustdohrAssistant.nonce || '',
+      };
+      if (aiTokenForRequest) requestBody.turnstile_token = aiTokenForRequest;
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: clean, lang: MustdohrAssistant.language || navigator.language.slice(0, 2) || 'en', visitor_id: visitorId })
+        headers: { 'Content-Type': 'application/json', 'X-MDH-Nonce': MustdohrAssistant.nonce || '' },
+        body: JSON.stringify(requestBody)
       });
       const data = await response.json();
+      if (mode === 'ai' && response.ok) aiCaptchaVerified = true;
+      if (mode === 'ai' && aiTokenForRequest) aiCaptchaToken = '';
+      if (!response.ok && data && ['captcha_required', 'captcha_failed', 'captcha_unavailable', 'captcha_not_configured'].indexOf(data.code) !== -1) {
+        aiCaptchaVerified = false;
+        if (window.turnstile && aiCaptcha) {
+          const widget = aiCaptcha.querySelector('.cf-turnstile');
+          if (widget && widget.dataset && widget.dataset.widgetId) window.turnstile.reset(widget.dataset.widgetId);
+        }
+        if (aiCaptcha) aiCaptcha.hidden = false;
+        waiting.textContent = data.message || 'Complete the security check and try again.';
+        return;
+      }
       const answer = data.answer || data.message || 'The assistant is temporarily unavailable.';
       waiting.textContent = answer;
       chatHistory.push({ question: clean, answer: answer, mode: mode, page_url: window.location.href, created_at: new Date().toISOString() });
@@ -231,7 +373,9 @@
         waiting.style.border = '1px solid #d9a400';
         waiting.style.color = '#5d4300';
       }
-      addResults(data.results, mode === 'search' ? searchTerms(clean) : []);
+      // AI mode should show only the conversation. Search-result keyword cards
+      // belong to search mode and must not be appended to an AI answer.
+      if (mode === 'search') addResults(data.results, searchTerms(clean));
       if (mode === 'search') {
         offerAi(clean);
       }
@@ -256,9 +400,21 @@
       return;
     }
     contactForm.hidden = !contactForm.hidden;
-    contactToggle.textContent = contactForm.hidden ? 'Contact Mustdohr' : 'Hide contact form';
+    contactToggle.textContent = contactForm.hidden ? 'Contact us' : 'Hide contact form';
     if (!contactForm.hidden && contactStatus) contactStatus.hidden = true;
   });
+  if (contactRemove) contactRemove.addEventListener('click', function () {
+    contactForm.hidden = true;
+    contactToggle.textContent = 'Contact us';
+    if (contactStatus) contactStatus.hidden = true;
+  });
+  if (quickToggle && quickPanel) {
+    quickToggle.addEventListener('click', function () {
+      quickPanel.hidden = !quickPanel.hidden;
+      quickToggle.textContent = quickPanel.hidden ? 'Quick access: find the right service' : 'Hide quick access';
+    });
+  }
+  if (quickForm) quickForm.addEventListener('submit', prepareQuickEnquiry);
   contactForm.addEventListener('submit', async function (event) {
     event.preventDefault();
     const button = contactForm.querySelector('button');
@@ -266,22 +422,11 @@
     button.disabled = true;
     try {
       const data = Object.fromEntries(new FormData(contactForm).entries());
-      data.page_url = window.location.href;
-      data.visitor_id = visitorId;
       data.trigger_reason = lastTrigger;
-      data.chat_question = lastQuestion;
-      data.chat_transcript = JSON.stringify(chatHistory.slice(-100));
-      data.source_website = config.sourceWebsite || window.location.hostname || 'Mustdohr';
-      const response = await fetch(MustdohrAssistant.contactEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.message || 'Your enquiry could not be sent.');
+      const result = await submitContactWithFallback(data);
       contactForm.reset();
       contactForm.hidden = true;
-      contactToggle.textContent = 'Contact Mustdohr';
+      contactToggle.textContent = 'Contact us';
       const confirmation = result.message || 'Thank you. The Mustdohr team will be in touch.';
       setContactStatus(confirmation, 'success');
       add(confirmation, 'assistant');

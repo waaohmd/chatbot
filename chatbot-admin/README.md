@@ -18,13 +18,28 @@ On Windows, double-click `start-admin.bat` in the repository main directory for
 a one-click launch. It installs dependencies on the first run, starts the local
 server, and opens the admin console in your browser.
 
+On macOS or Linux, run `../start-admin.sh` from the repository root. If needed,
+make it executable first with `chmod +x start-admin.sh`.
+
 The console can:
 
-- connect to the private WordPress records endpoint with a records key;
-- connect to the records archive server over SSH without saving the password;
-- view and refresh chat records and contact submissions;
-- export records as CSV;
-- view analytics, workflow settings, knowledge URLs, Q&A, and notification emails.
+- connect to the private WordPress records endpoint with an existing records
+  passkey; each connection remains active for 15 minutes;
+- download chat records and Contact submissions to this computer;
+- verify each local write, then clear only the downloaded WordPress IDs;
+- keep timestamped JSON backups in the local data folder;
+- view and export the local archive as CSV;
+- manage chatbot settings, knowledge URLs, Q&A, analytics, and notification emails.
 
-SSH passwords and private records keys are entered at runtime only. Do not add
-`.env.local` or credentials to this repository.
+No SSH connection or server password is used. The connection key is held only
+inside an HttpOnly local-admin session cookie and expires after 15 minutes.
+Contact notification emails include the complete contact form and the linked
+chat transcript.
+
+Local archive files (created after the first connection):
+
+- `data/chat-records.json`
+- `data/contact-submissions.json`
+- `data/backups/` (timestamped safety copies)
+
+The `data/` folder is ignored by Git so private records are not committed.

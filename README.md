@@ -33,6 +33,13 @@ Windows, double-click [`start-admin.bat`](./start-admin.bat) in the repository
 root. It starts the local admin server and opens
 `http://localhost:3010/local-admin` in your browser.
 
+On macOS or Linux, run [`start-admin.sh`](./start-admin.sh) from a terminal:
+
+```bash
+chmod +x start-admin.sh
+./start-admin.sh
+```
+
 ## Integration points
 
 - REST search endpoint: `/wp-json/mustdohr-search/v1/ask`

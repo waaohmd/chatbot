@@ -1,0 +1,11 @@
+# Local-only and generated data
+.env*
+!.env.example
+node_modules/
+.next/
+data/
+backups/
+*.sqlite
+*.sqlite3
+*.csv
+*.zip
